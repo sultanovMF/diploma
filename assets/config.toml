@@ -1,0 +1,20 @@
+# Общие настройки программы
+[general]
+snapshot_freq = 10 # каждый N-ый слой записываем в файл
+hdf5_filename = "dataset.h5" 
+
+# Задания для вычислений
+
+[[tasks]]
+name = "elastic.small"
+descr = """
+Elastic wave propogation on small grid (100, 100, 100)
+"""
+xdim = 100
+ydim = 100
+zdim = 100
+tfin = 1.0 #s
+
+tau = 0.0
+tau_k = 0.0
+tau_s = 0.0

@@ -11,13 +11,13 @@ descr = """
 Elastic wave propogation on small grid (100, 100, 100)
 """
 # Настройка сетки
-xdim = 100
-ydim = 100
-zdim = 100
+dimx = 100
+dimy = 100
+dimz = 100
 
-dx = 1
-dy = 1
-dz = 1
+dx = 1.0
+dy = 1.0
+dz = 1.0
 
 tfin = 1.0 #s
 dt = 0.01

@@ -11,9 +11,9 @@ descr = """
 Elastic wave propogation on small grid (100, 100, 100)
 """
 # Настройка сетки
-dimx = 100
-dimy = 100
-dimz = 100
+dimx = 20
+dimy = 20
+dimz = 20
 
 dx = 1.0
 dy = 1.0
@@ -30,3 +30,5 @@ tau_s = 0.0
 lambda = 1.0
 mu = 1.0
 rho = 1.0
+
+freqM = 50.0 # ricker wavelet max freq

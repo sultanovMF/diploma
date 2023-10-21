@@ -7,6 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_CLANG_TIDY clang-tidy-17 -checks=-*,readability-*)
 set(Boost_NO_WARN_NEW_VERSIONS 1)
 
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     message(STATUS "Compiler is Clang!")
 endif()

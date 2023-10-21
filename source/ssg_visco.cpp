@@ -1,9 +1,10 @@
 #include <eigen3/Eigen/Dense>
 #include <eigen3/unsupported/Eigen/CXX11/Tensor>
 #include <iostream>
+#include <numbers>
+#include <cmath>
 #include <omp.h>
 #include <vector>
-
 #include <highfive/H5Easy.hpp> // для записи результатов рабты численной схемы
 #include <toml.hpp> // для считывания файла конфигурации
 
@@ -11,16 +12,28 @@ int main() {
   std::ostream &log(std::cout);
 
   const auto config = toml::parse("./assets/config.toml");
+
+  const auto general_config = toml::find(config, "general");
+
   const auto tasks = toml::find(config, "tasks");
 
+  const int snapshot_freq = toml::find<int>(general_config, "snapshot_freq");
+  const std::string dataset_path = toml::find<std::string>(general_config, "hdf5_filename");
+  HighFive::File dataset(dataset_path, HighFive::File::Truncate);
+
+
   for (const auto &task : tasks.as_array()) {
-    log << "Start processing task "
-        << " : " << toml::find<std::string>(task, "name") << '\n';
-    log << "\t description: " << toml::find<std::string>(task, "descr") << '\n';
+    std::string task_name = toml::find<std::string>(task, "name");
+    std::string task_descr = toml::find<std::string>(task, "descr");
+
+    log << "Start processing task " << " : " << task_name  << '\n';
+    log << "\t description: " << task_descr << '\n';
+    // dataset.createDataSet("tasks/" + task_name + "/", data);
 
     const unsigned int dimx = toml::find<unsigned int>(task, "dimx");
     const unsigned int dimy = toml::find<unsigned int>(task, "dimy");
     const unsigned int dimz = toml::find<unsigned int>(task, "dimz");
+
 
     const double dx = toml::find<double>(task, "dx");
     const double dy = toml::find<double>(task, "dy");
@@ -31,6 +44,8 @@ int main() {
     const double tau_p = toml::find<double>(task, "tau_p");
     const double tau_s = toml::find<double>(task, "tau_s");
     const double tau = toml::find<double>(task, "tau");
+
+    const double freqM = toml::find<double>(task, "freqM");
 
     const double lambda = toml::find<double>(task, "lambda");
     const double mu = toml::find<double>(task, "mu");
@@ -61,6 +76,16 @@ int main() {
     const double tfin = toml::find<double>(task, "tfin");
     const double dt = toml::find<double>(task, "dt");
     const unsigned int dimt = (unsigned int)tfin / dt;
+  
+    std::string dump_folder = "/" + task_name;
+
+    const unsigned int micro_x = toml::find<unsigned int>(task, "micro_x");
+    const unsigned int micro_y = toml::find<unsigned int>(task, "micro_y");
+    const unsigned int micro_z = toml::find<unsigned int>(task, "micro_z");
+
+    // std::vector<double> micro_storage(3 * (dimt / snapshot_freq + 1));
+    
+    // Eigen::TensorMap<Eigen::Tensor<double, 2>> micro_data(&micro_storage.front(), 3, dimt / snapshot_freq + 1);
 
     std::vector<double> v_x_prev_storage(dimx * dimx * dimx);
     std::vector<double> v_y_prev_storage(dimx * dimx * dimx);
@@ -179,7 +204,14 @@ int main() {
 
     const double memory_var_coef = (1 + dt / tau / 2);
 
-    for (int n = 1; n < dimt; ++n) {
+    auto ricker_wavelet = [] (double freqM, double t) {
+      return (1 - 2 * std::numbers::pi * std::numbers::pi * freqM * freqM * t * t) * std::exp(-std::numbers::pi * std::numbers::pi * freqM * freqM * t * t); 
+    };
+
+    Eigen::Vector3i source_pos = {dimx / 2, dimy / 2, dimz / 2};
+
+    for (int n = 0; n < dimt; ++n) {
+      log << "layer " << n << "/" << dimt << "\n";
       // update velocities
       for (int i = pml_domain_size; i < dimx - pml_domain_size; i += 2) {
         for (int j = pml_domain_size; j < dimy - pml_domain_size; j += 2) {
@@ -204,6 +236,12 @@ int main() {
           }
         }
       }
+
+      // initialize source wavelet
+      vXnext(source_pos(0) + 1, source_pos(1) + 1, source_pos(2) + 1) = ricker_wavelet(freqM, n * dt);
+      vYnext(source_pos(0) + 1, source_pos(1) + 1, source_pos(2) + 1) = ricker_wavelet(freqM, n * dt);
+      vZnext(source_pos(0) + 1, source_pos(1) + 1, source_pos(2) + 1) = ricker_wavelet(freqM, n * dt);
+
       // update memory variables
       for (int i = pml_domain_size; i < dimx - pml_domain_size; i += 2) {
         for (int j = pml_domain_size; j < dimy - pml_domain_size; j += 2) {
@@ -248,6 +286,7 @@ int main() {
           }
         }
       }
+
       // update strain variables
       for (int i = pml_domain_size; i < dimx - pml_domain_size; i += 2) {
         for (int j = pml_domain_size; j < dimy - pml_domain_size; j += 2) {
@@ -293,7 +332,20 @@ int main() {
           }
         }
       }
+
+      if (n % snapshot_freq == 0) {
+         
+          H5Easy::dump(dataset, dump_folder + "/" + std::to_string(n) + "/vx", v_x_prev_storage, H5Easy::DumpMode::Overwrite);
+          H5Easy::dump(dataset, dump_folder + "/" + std::to_string(n) + "/vy", v_y_prev_storage, H5Easy::DumpMode::Overwrite);
+          H5Easy::dump(dataset, dump_folder + "/" + std::to_string(n) + "/vz", v_z_prev_storage, H5Easy::DumpMode::Overwrite);
+          
+          H5Easy::dump(dataset, dump_folder + "/" + std::to_string(n) + "/microx", vXnext(micro_x, micro_y, micro_z), H5Easy::DumpMode::Overwrite);
+          H5Easy::dump(dataset, dump_folder + "/" + std::to_string(n) + "/microz", vYnext(micro_x, micro_y, micro_z), H5Easy::DumpMode::Overwrite);
+          H5Easy::dump(dataset, dump_folder + "/" + std::to_string(n) + "/microy", vZnext(micro_x, micro_y, micro_z), H5Easy::DumpMode::Overwrite);
+      }
     }
+
+    // H5Easy::dumpAttribute(dataset, dump_folder, "dimt", dimt);
   }
   return 0;
 }
